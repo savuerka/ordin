@@ -1,4 +1,4 @@
-module github.com/yourname/mini-larago
+module github.com/savuerka/ordin
 
 go 1.23
 

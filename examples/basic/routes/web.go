@@ -2,7 +2,8 @@ package routes
 
 import (
 	"basic-example/app/controllers"
-	"github.com/yourname/mini-larago/framework"
+
+	"github.com/savuerka/ordin/framework"
 )
 
 func Register(app *framework.App, users controllers.UserController) {

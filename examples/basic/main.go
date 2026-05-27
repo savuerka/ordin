@@ -7,7 +7,8 @@ import (
 
 	"basic-example/app/controllers"
 	"basic-example/routes"
-	"github.com/yourname/mini-larago/framework"
+
+	"github.com/savuerka/ordin/framework"
 )
 
 func main() {
