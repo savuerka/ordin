@@ -1,4 +1,4 @@
-# Mini Larago
+# ORDIN
 
 Минималистичный Laravel-like фреймворк на Go: роутинг, группы, middleware, JSON context, простой ORM/query builder для PostgreSQL и SQL-миграции.
 
