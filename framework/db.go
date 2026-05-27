@@ -10,7 +10,10 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-type DB struct{ sql *sql.DB }
+type DB struct {
+	sql *sql.DB
+	dsn string
+}
 
 func ConnectPostgres(dsn string) (*DB, error) {
 	db, err := sql.Open("pgx", dsn)
@@ -20,11 +23,12 @@ func ConnectPostgres(dsn string) (*DB, error) {
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
-	return &DB{sql: db}, nil
+	return &DB{sql: db, dsn: dsn}, nil
 }
 
 func (db *DB) Close() error { return db.sql.Close() }
 func (db *DB) SQL() *sql.DB { return db.sql }
+func (db *DB) DSN() string  { return db.dsn }
 func (db *DB) Table(name string) *QueryBuilder {
 	return &QueryBuilder{db: db.sql, table: name, limit: -1}
 }
