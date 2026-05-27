@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -156,8 +158,12 @@ type rowScanner interface{ Scan(dest ...any) error }
 
 func scanRow(row rowScanner, dst any) error {
 	v := reflect.Indirect(reflect.ValueOf(dst))
-	ptrs := fieldPointers(v)
-	return row.Scan(ptrs...)
+	fields := dbFieldsInStructOrder(v)
+	values, ptrs := rawScanTargets(len(fields))
+	if err := row.Scan(ptrs...); err != nil {
+		return err
+	}
+	return assignScannedValues(v, fields, values)
 }
 
 func scanAll(rows *sql.Rows, dst any) error {
@@ -169,8 +175,12 @@ func scanAll(rows *sql.Rows, dst any) error {
 	}
 	for rows.Next() {
 		elem := reflect.New(elemType).Elem()
-		ptrs := fieldPointersByColumns(elem, cols)
+		fields := dbFieldsByColumns(elem, cols)
+		values, ptrs := rawScanTargets(len(cols))
 		if err := rows.Scan(ptrs...); err != nil {
+			return err
+		}
+		if err := assignScannedValues(elem, fields, values); err != nil {
 			return err
 		}
 		slice.Set(reflect.Append(slice, elem))
@@ -178,33 +188,171 @@ func scanAll(rows *sql.Rows, dst any) error {
 	return rows.Err()
 }
 
-func fieldPointers(v reflect.Value) []any {
-	ptrs := []any{}
-	for i := 0; i < v.NumField(); i++ {
-		if v.Field(i).CanAddr() {
-			ptrs = append(ptrs, v.Field(i).Addr().Interface())
-		}
+func rawScanTargets(n int) ([]any, []any) {
+	values := make([]any, n)
+	ptrs := make([]any, n)
+	for i := range values {
+		ptrs[i] = &values[i]
 	}
-	return ptrs
+	return values, ptrs
 }
 
-func fieldPointersByColumns(v reflect.Value, cols []string) []any {
-	ptrs := make([]any, len(cols))
+func dbFieldsInStructOrder(v reflect.Value) []int {
+	fields := make([]int, 0, v.NumField())
+	for i := 0; i < v.NumField(); i++ {
+		if !v.Field(i).CanSet() {
+			continue
+		}
+		if tag := v.Type().Field(i).Tag.Get("db"); tag == "-" {
+			continue
+		}
+		fields = append(fields, i)
+	}
+	return fields
+}
+
+func dbFieldsByColumns(v reflect.Value, cols []string) []int {
+	fields := make([]int, len(cols))
+	for i := range fields {
+		fields[i] = -1
+	}
+
 	for i, col := range cols {
-		found := false
 		for j := 0; j < v.NumField(); j++ {
-			if v.Type().Field(j).Tag.Get("db") == col && v.Field(j).CanAddr() {
-				ptrs[i] = v.Field(j).Addr().Interface()
-				found = true
+			field := v.Field(j)
+			structField := v.Type().Field(j)
+			if !field.CanSet() {
+				continue
+			}
+			tag := structField.Tag.Get("db")
+			if tag == "-" {
+				continue
+			}
+			if tag == col || (tag == "" && strings.EqualFold(structField.Name, col)) {
+				fields[i] = j
 				break
 			}
 		}
-		if !found {
-			var skip any
-			ptrs[i] = &skip
+	}
+	return fields
+}
+
+func assignScannedValues(v reflect.Value, fields []int, values []any) error {
+	for i, fieldIndex := range fields {
+		if fieldIndex < 0 || fieldIndex >= v.NumField() {
+			continue
+		}
+		if i >= len(values) {
+			break
+		}
+		if err := assignScannedValue(v.Field(fieldIndex), values[i]); err != nil {
+			name := v.Type().Field(fieldIndex).Name
+			return fmt.Errorf("scan field %s: %w", name, err)
 		}
 	}
-	return ptrs
+	return nil
+}
+
+func assignScannedValue(field reflect.Value, value any) error {
+	if !field.CanSet() {
+		return nil
+	}
+
+	if field.CanAddr() {
+		if scanner, ok := field.Addr().Interface().(sql.Scanner); ok {
+			return scanner.Scan(value)
+		}
+	}
+
+	if value == nil {
+		field.Set(reflect.Zero(field.Type()))
+		return nil
+	}
+
+	if field.Kind() == reflect.Pointer {
+		elem := reflect.New(field.Type().Elem())
+		if scanner, ok := elem.Interface().(sql.Scanner); ok {
+			if err := scanner.Scan(value); err != nil {
+				return err
+			}
+			field.Set(elem)
+			return nil
+		}
+		if err := assignScannedValue(elem.Elem(), value); err != nil {
+			return err
+		}
+		field.Set(elem)
+		return nil
+	}
+
+	if valueBytes, ok := value.([]byte); ok {
+		value = string(valueBytes)
+	}
+
+	if valueTime, ok := value.(time.Time); ok && field.Type() == reflect.TypeOf(time.Time{}) {
+		field.Set(reflect.ValueOf(valueTime))
+		return nil
+	}
+
+	val := reflect.ValueOf(value)
+	if val.IsValid() && val.Type().AssignableTo(field.Type()) {
+		field.Set(val)
+		return nil
+	}
+	if val.IsValid() && val.Type().ConvertibleTo(field.Type()) {
+		field.Set(val.Convert(field.Type()))
+		return nil
+	}
+
+	s := fmt.Sprint(value)
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(s)
+		return nil
+	case reflect.Bool:
+		b, err := strconv.ParseBool(s)
+		if err != nil {
+			return err
+		}
+		field.SetBool(b)
+		return nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if field.Type() == reflect.TypeOf(time.Duration(0)) {
+			d, err := time.ParseDuration(s)
+			if err != nil {
+				return err
+			}
+			field.SetInt(int64(d))
+			return nil
+		}
+		n, err := strconv.ParseInt(s, 10, field.Type().Bits())
+		if err != nil {
+			return err
+		}
+		field.SetInt(n)
+		return nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		n, err := strconv.ParseUint(s, 10, field.Type().Bits())
+		if err != nil {
+			return err
+		}
+		field.SetUint(n)
+		return nil
+	case reflect.Float32, reflect.Float64:
+		n, err := strconv.ParseFloat(s, field.Type().Bits())
+		if err != nil {
+			return err
+		}
+		field.SetFloat(n)
+		return nil
+	case reflect.Slice:
+		if field.Type().Elem().Kind() == reflect.Uint8 {
+			field.SetBytes([]byte(s))
+			return nil
+		}
+	}
+
+	return fmt.Errorf("cannot assign database value %T to %s", value, field.Type())
 }
 
 func bindPlaceholders(query string) string {
