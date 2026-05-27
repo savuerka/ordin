@@ -1,0 +1,109 @@
+package framework
+
+import (
+	"net/http"
+	"strings"
+)
+
+type route struct {
+	method      string
+	pattern     string
+	parts       []string
+	handler     HandlerFunc
+	middlewares []Middleware
+}
+
+type Router struct {
+	prefix      string
+	routes      []route
+	middlewares []Middleware
+}
+
+func NewRouter() *Router { return &Router{} }
+
+func (r *Router) Use(middlewares ...Middleware) {
+	r.middlewares = append(r.middlewares, middlewares...)
+}
+
+func (r *Router) Group(prefix string, fn func(*Router), middlewares ...Middleware) {
+	g := &Router{
+		prefix:      joinPath(r.prefix, prefix),
+		middlewares: append(append([]Middleware{}, r.middlewares...), middlewares...),
+	}
+	fn(g)
+	r.routes = append(r.routes, g.routes...)
+}
+
+func (r *Router) Get(path string, h HandlerFunc, middlewares ...Middleware) {
+	r.add(http.MethodGet, path, h, middlewares...)
+}
+func (r *Router) Post(path string, h HandlerFunc, middlewares ...Middleware) {
+	r.add(http.MethodPost, path, h, middlewares...)
+}
+func (r *Router) Put(path string, h HandlerFunc, middlewares ...Middleware) {
+	r.add(http.MethodPut, path, h, middlewares...)
+}
+func (r *Router) Patch(path string, h HandlerFunc, middlewares ...Middleware) {
+	r.add(http.MethodPatch, path, h, middlewares...)
+}
+func (r *Router) Delete(path string, h HandlerFunc, middlewares ...Middleware) {
+	r.add(http.MethodDelete, path, h, middlewares...)
+}
+
+func (r *Router) add(method, path string, h HandlerFunc, middlewares ...Middleware) {
+	full := joinPath(r.prefix, path)
+	mw := append(append([]Middleware{}, r.middlewares...), middlewares...)
+	r.routes = append(r.routes, route{method: method, pattern: full, parts: splitPath(full), handler: h, middlewares: mw})
+}
+
+func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	for _, rt := range r.routes {
+		if rt.method != req.Method {
+			continue
+		}
+		params, ok := match(rt.parts, splitPath(req.URL.Path))
+		if !ok {
+			continue
+		}
+		ctx := newContext(w, req, params)
+		if err := chain(rt.handler, rt.middlewares...)(ctx); err != nil {
+			_ = ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		return
+	}
+	http.NotFound(w, req)
+}
+
+func splitPath(path string) []string {
+	path = strings.Trim(path, "/")
+	if path == "" {
+		return []string{}
+	}
+	return strings.Split(path, "/")
+}
+
+func match(patternParts, requestParts []string) (map[string]string, bool) {
+	if len(patternParts) != len(requestParts) {
+		return nil, false
+	}
+	params := map[string]string{}
+	for i := range patternParts {
+		pp, rp := patternParts[i], requestParts[i]
+		if strings.HasPrefix(pp, "{") && strings.HasSuffix(pp, "}") {
+			params[strings.TrimSuffix(strings.TrimPrefix(pp, "{"), "}")] = rp
+			continue
+		}
+		if pp != rp {
+			return nil, false
+		}
+	}
+	return params, true
+}
+
+func joinPath(a, b string) string {
+	joined := "/" + strings.Trim(strings.TrimRight(a, "/")+"/"+strings.TrimLeft(b, "/"), "/")
+	if joined == "/" {
+		return "/"
+	}
+	return strings.ReplaceAll(joined, "//", "/")
+}
