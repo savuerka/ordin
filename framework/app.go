@@ -1,6 +1,9 @@
 package framework
 
-import "net/http"
+import (
+	"html/template"
+	"net/http"
+)
 
 // Option configures an App during creation.
 type Option func(*App)
@@ -42,4 +45,18 @@ func WithMiddleware(middlewares ...Middleware) Option {
 // Dev enables a small development preset: panic recovery + request logging.
 func Dev() Option {
 	return WithMiddleware(Recover(), Logger())
+}
+
+// WithRenderer sets a custom HTML view renderer.
+func WithRenderer(renderer Renderer) Option {
+	return func(app *App) {
+		app.Router.config.renderer = renderer
+	}
+}
+
+// WithViews configures the default ORDIN Blade-like view engine.
+func WithViews(dir string, funcs ...template.FuncMap) Option {
+	return func(app *App) {
+		app.Router.config.renderer = MustViewEngine(dir, funcs...)
+	}
 }

@@ -13,15 +13,20 @@ type route struct {
 	middlewares []Middleware
 }
 
+type routerConfig struct {
+	renderer Renderer
+}
+
 type Router struct {
 	prefix      string
 	routes      *[]route
 	middlewares []Middleware
+	config      *routerConfig
 }
 
 func NewRouter() *Router {
 	routes := make([]route, 0)
-	return &Router{routes: &routes}
+	return &Router{routes: &routes, config: &routerConfig{}}
 }
 
 func (r *Router) Use(middlewares ...Middleware) {
@@ -34,6 +39,7 @@ func (r *Router) Route(prefix string, middlewares ...Middleware) *Router {
 		prefix:      joinPath(r.prefix, prefix),
 		routes:      r.routes,
 		middlewares: appendMiddlewares(r.middlewares, middlewares...),
+		config:      r.config,
 	}
 }
 
@@ -95,7 +101,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			continue
 		}
 
-		ctx := newContext(w, req, params)
+		ctx := newContext(w, req, params, r.config.renderer)
 		if err := chain(rt.handler, rt.middlewares...)(ctx); err != nil {
 			_ = ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}

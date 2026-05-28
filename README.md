@@ -17,6 +17,8 @@
 - generic typed query: `ordin.Query[T](db, "table").All(ctx)`
 - CRUD routes через `Resource`
 - простые SQL-миграции из папки
+- HTML views через `c.View(...)`
+- Blade-like шаблоны `.ordin.html`: `@extends`, `@section`, `@yield`, `@include`, `@if`, `@foreach`, `{{ value }}`
 
 ## Подключение
 
@@ -113,6 +115,84 @@ POST /api/users
 PUT    /api/users/{id}
 DELETE /api/users/{id}
 ```
+
+
+## Views / Blade-like templates
+
+ORDIN умеет рендерить обычные Go `html/template` файлы и Blade-like файлы с расширением `.ordin.html`.
+
+Подключение:
+
+```go
+app := ordin.New(
+    ordin.Dev(),
+    ordin.WithViews("resources/views"),
+)
+```
+
+Роут:
+
+```go
+app.Get("/", func(c *ordin.Context) error {
+    return c.View("welcome", ordin.Data{
+        "title": "ORDIN",
+        "user": user,
+    })
+})
+```
+
+Шаблон `resources/views/welcome.ordin.html`:
+
+```blade
+@extends("layouts.app")
+
+@section("title")
+    {{ title }}
+@endsection
+
+@section("content")
+    <h1>Hello, {{ user.Name }}</h1>
+
+    @if user.IsAdmin
+        <p>Admin mode</p>
+    @else
+        <p>User mode</p>
+    @endif
+@endsection
+```
+
+Layout `resources/views/layouts/app.ordin.html`:
+
+```blade
+<!doctype html>
+<html>
+<head>
+    <title>@yield("title")</title>
+</head>
+<body>
+    @include("partials.nav")
+
+    <main>
+        @yield("content")
+    </main>
+</body>
+</html>
+```
+
+Поддерживается:
+
+```blade
+{{ value }}              # escaped output
+{!! trustedHTML !!}      # raw HTML, использовать аккуратно
+@extends("layouts.app")
+@section("content") ... @endsection
+@yield("content")
+@include("partials.nav")
+@if condition ... @else ... @endif
+@foreach items as item ... @endforeach
+```
+
+Внутри это компилируется в `html/template`, поэтому обычный `{{ value }}` экранируется безопасно по умолчанию.
 
 ## PostgreSQL ORM/query builder
 

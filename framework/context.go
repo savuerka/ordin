@@ -9,16 +9,17 @@ import (
 )
 
 type Context struct {
-	Writer  http.ResponseWriter
-	Request *http.Request
-	params  map[string]string
+	Writer   http.ResponseWriter
+	Request  *http.Request
+	params   map[string]string
+	renderer Renderer
 }
 
-func newContext(w http.ResponseWriter, r *http.Request, params map[string]string) *Context {
+func newContext(w http.ResponseWriter, r *http.Request, params map[string]string, renderer Renderer) *Context {
 	if params == nil {
 		params = map[string]string{}
 	}
-	return &Context{Writer: w, Request: r, params: params}
+	return &Context{Writer: w, Request: r, params: params, renderer: renderer}
 }
 
 func (c *Context) Param(name string) string {

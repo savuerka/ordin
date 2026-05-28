@@ -1,6 +1,10 @@
 package ordin
 
-import "github.com/savuerka/ordin/framework"
+import (
+	"html/template"
+
+	"github.com/savuerka/ordin/framework"
+)
 
 type App = framework.App
 type Router = framework.Router
@@ -12,6 +16,9 @@ type HandlerFunc = framework.HandlerFunc
 type Middleware = framework.Middleware
 type Option = framework.Option
 type Resource = framework.Resource
+type Data = framework.Data
+type Renderer = framework.Renderer
+type ViewEngine = framework.ViewEngine
 
 func New(options ...Option) *App {
 	return framework.New(options...)
@@ -23,6 +30,22 @@ func NewRouter() *Router {
 
 func WithMiddleware(middlewares ...Middleware) Option {
 	return framework.WithMiddleware(middlewares...)
+}
+
+func WithRenderer(renderer Renderer) Option {
+	return framework.WithRenderer(renderer)
+}
+
+func WithViews(dir string, funcs ...template.FuncMap) Option {
+	return framework.WithViews(dir, funcs...)
+}
+
+func NewViewEngine(dir string, funcs ...template.FuncMap) (*ViewEngine, error) {
+	return framework.NewViewEngine(dir, funcs...)
+}
+
+func MustViewEngine(dir string, funcs ...template.FuncMap) *ViewEngine {
+	return framework.MustViewEngine(dir, funcs...)
 }
 
 func Dev() Option {

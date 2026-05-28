@@ -19,7 +19,10 @@ func main() {
 
 	ordin.MustMigrate(db, "migrations")
 
-	app := ordin.New(ordin.Dev())
+	app := ordin.New(
+		ordin.Dev(),
+		ordin.WithViews("resources/views"),
+	)
 	routes.Register(app, controllers.UserController{DB: db})
 
 	addr := getenv("APP_ADDR", ":8080")

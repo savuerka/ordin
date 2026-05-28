@@ -1,0 +1,22 @@
+{{-- resources/views/welcome.ordin.html --}}
+@extends("layouts.app")
+
+@section("title")
+    {{ title }}
+@endsection
+
+@section("content")
+    <h1>{{ heading }}</h1>
+    <p class="muted">{{ description }}</p>
+
+    @if showEndpoints
+        <h2>Endpoints</h2>
+        <ul>
+            @foreach endpoints as endpoint
+                <li><code>{{ endpoint.Method }}</code> {{ endpoint.Path }}</li>
+            @endforeach
+        </ul>
+    @else
+        <p>Endpoint list is hidden.</p>
+    @endif
+@endsection

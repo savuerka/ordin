@@ -49,6 +49,19 @@ func (c *Context) NotFound(message string) error {
 	return c.Error(http.StatusNotFound, message)
 }
 
+// View renders a configured HTML view with HTTP 200.
+func (c *Context) View(name string, data any) error {
+	return c.ViewStatus(http.StatusOK, name, data)
+}
+
+// ViewStatus renders a configured HTML view with a custom HTTP status.
+func (c *Context) ViewStatus(code int, name string, data any) error {
+	if c.renderer == nil {
+		return c.Error(http.StatusInternalServerError, "view renderer is not configured")
+	}
+	return c.renderer.Render(c.Writer, code, name, data)
+}
+
 // Bind decodes JSON body into T and returns the value.
 func Bind[T any](c *Context) (T, error) {
 	var value T
