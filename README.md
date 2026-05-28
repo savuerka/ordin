@@ -21,6 +21,10 @@
 - Blade-like шаблоны `.ordin.html`: `@extends`, `@section`, `@yield`, `@include`, `@if`, `@foreach`, `{{ value }}`
 - S3-compatible storage: MinIO, SeaweedFS S3, AWS S3 и похожие backend-ы
 - RabbitMQ queue backend через AMQP 0.9.1
+- Redis cache/client abstraction
+- SFTP upload transport с SHA-256 checksum verification после загрузки
+- in-process scheduler для периодических задач
+- sequential pipelines для задач отгрузки файлов, ETL и фоновых workflow
 
 ## Подключение
 
@@ -337,6 +341,193 @@ RABBITMQ_URL=amqp://guest:guest@localhost:5672/
 
 В `examples/basic` очередь включается явно через `RABBITMQ_ENABLED=true`. Без этого demo-route `/demo/jobs/welcome` вернёт `503`, чтобы базовый пример запускался без RabbitMQ.
 
+
+
+## Redis cache
+
+ORDIN содержит небольшую `Cache`-абстракцию и Redis backend через `github.com/redis/go-redis/v9`.
+
+```go
+cache := ordin.MustRedisCache(ordin.RedisConfig{
+    Addr:   "localhost:6379",
+    DB:     0,
+    Prefix: "ordin:",
+})
+defer cache.Close()
+
+app := ordin.New(
+    ordin.Dev(),
+    ordin.WithRedis(cache),
+)
+```
+
+В handler-е:
+
+```go
+app.Post("/cache", func(c *ordin.Context) error {
+    if err := c.MustCache().Set(c.Ctx(), "demo:key", "value", 5*time.Minute); err != nil {
+        return err
+    }
+
+    value, err := c.MustCache().Get(c.Ctx(), "demo:key")
+    if err != nil {
+        return err
+    }
+
+    return c.OK(ordin.Data{"value": value})
+})
+```
+
+Можно получить низкоуровневый go-redis client:
+
+```go
+client := c.MustRedis().Client()
+```
+
+Переменные окружения:
+
+```text
+REDIS_ADDR=localhost:6379
+REDIS_USERNAME=
+REDIS_PASSWORD=
+REDIS_DB=0
+REDIS_PREFIX=ordin:
+REDIS_TLS=false
+```
+
+В `examples/basic` Redis включается явно через `REDIS_ENABLED=true`.
+
+## SFTP file transport с checksum verification
+
+SFTP-слой нужен для отгрузки файлов на удалённый хост. После загрузки ORDIN по умолчанию перечитывает удалённый файл и сравнивает SHA-256 контрольную сумму.
+
+```go
+sftpClient := ordin.MustSFTPClient(ordin.SFTPConfig{
+    Host:                  "localhost",
+    Port:                  2222,
+    Username:              "ordin",
+    Password:              "ordin",
+    InsecureIgnoreHostKey: true, // только для локальной разработки
+})
+defer sftpClient.Close()
+
+app := ordin.New(
+    ordin.Dev(),
+    ordin.WithSFTP(sftpClient),
+)
+```
+
+Загрузка файла:
+
+```go
+result, err := c.MustSFTP().Upload(
+    c.Ctx(),
+    "/tmp/report.csv",
+    "/upload/reports/report.csv",
+    ordin.WithSFTPMkdirAll(),
+)
+if err != nil {
+    return err
+}
+
+return c.Created(result)
+```
+
+`result.Verified == true` означает, что remote SHA-256 совпал с локальным SHA-256.
+
+Для production лучше использовать `SFTP_KNOWN_HOSTS_PATH`, а не `SFTP_INSECURE_IGNORE_HOST_KEY=true`.
+
+Переменные окружения:
+
+```text
+SFTP_HOST=localhost
+SFTP_PORT=2222
+SFTP_USERNAME=ordin
+SFTP_PASSWORD=ordin
+SFTP_PRIVATE_KEY_PATH=
+SFTP_PRIVATE_KEY_PASSPHRASE=
+SFTP_KNOWN_HOSTS_PATH=
+SFTP_INSECURE_IGNORE_HOST_KEY=false
+SFTP_TIMEOUT=15s
+```
+
+В `examples/basic` SFTP включается явно через `SFTP_ENABLED=true`.
+
+## Scheduler
+
+Scheduler — это in-process планировщик. Он хорош для одного worker-процесса, cron-like задач разработки, регулярных отгрузок и maintenance job-ов. В нескольких репликах лучше запускать scheduler только в отдельном worker-е или защищать задачи distributed lock-ом через Redis.
+
+```go
+scheduler := ordin.NewScheduler()
+
+scheduler.Every("ship-files", 5*time.Minute, func(ctx context.Context) error {
+    // найти файлы, собрать pipeline, отгрузить
+    return nil
+}, ordin.RunImmediately(), ordin.WithScheduleTimeout(2*time.Minute))
+
+_, err := scheduler.DailyAt("daily-report", "02:30", func(ctx context.Context) error {
+    // daily task
+    return nil
+})
+if err != nil {
+    panic(err)
+}
+
+go func() {
+    _ = scheduler.Start(context.Background())
+}()
+
+app := ordin.New(
+    ordin.Dev(),
+    ordin.WithScheduler(scheduler),
+)
+```
+
+В handler-е можно посмотреть зарегистрированные задачи:
+
+```go
+for _, job := range c.MustScheduler().Jobs() {
+    fmt.Println(job.Name, job.LastError())
+}
+```
+
+## Pipelines
+
+Pipeline — это последовательное выполнение шагов с общим `PipelineContext`, retry, timeout и возможностью продолжить выполнение при ошибке отдельного шага.
+
+```go
+pipeline := ordin.NewPipeline("file-shipment").
+    Use("prepare", func(pc *ordin.PipelineContext) error {
+        pc.Set("local_path", "/tmp/report.csv")
+        pc.Set("remote_path", "/upload/reports/report.csv")
+        return nil
+    }).
+    Use("upload-sftp", func(pc *ordin.PipelineContext) error {
+        result, err := sftpClient.Upload(pc, pc.String("local_path"), pc.String("remote_path"))
+        if err != nil {
+            return err
+        }
+        pc.Set("upload", result)
+        return nil
+    }, ordin.WithStepRetries(2, time.Second), ordin.WithStepTimeout(30*time.Second)).
+    Use("publish-event", func(pc *ordin.PipelineContext) error {
+        return queue.PublishJSON(pc, "shipments", ordin.Data{
+            "type":        "file.shipped",
+            "remote_path": pc.String("remote_path"),
+        })
+    }, ordin.ContinueOnStepError())
+
+result, err := pipeline.Run(context.Background(), ordin.Data{})
+if err != nil {
+    panic(err)
+}
+
+fmt.Println(result.Events)
+```
+
+Это основной механизм, через который удобно собирать задачи отгрузки файлов: validate → prepare → upload SFTP/S3 → verify checksum → publish event → cleanup.
+
+
 ## PostgreSQL ORM/query builder
 
 ```go
@@ -439,4 +630,17 @@ curl -X POST http://localhost:8080/api/users \
   -d '{"name":"Alex","email":"alex@test.com"}'
 
 curl http://localhost:8080/api/users
+```
+
+
+Дополнительные demo endpoints при включённых сервисах:
+
+```bash
+curl -X POST 'http://localhost:8080/demo/cache?key=hello&value=world'
+
+curl -F file=@README.md http://localhost:8080/demo/sftp/upload
+
+curl http://localhost:8080/demo/scheduler/jobs
+
+curl -F file=@README.md http://localhost:8080/demo/pipelines/shipment
 ```

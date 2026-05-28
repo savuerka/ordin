@@ -75,6 +75,60 @@ func (c *Context) MustQueue() Queue {
 	return c.queue
 }
 
+// Cache returns the configured cache service.
+func (c *Context) Cache() Cache {
+	return c.cache
+}
+
+// MustCache returns the configured cache service or panics.
+func (c *Context) MustCache() Cache {
+	if c.cache == nil {
+		panic("cache is not configured")
+	}
+	return c.cache
+}
+
+// Redis returns the configured Redis-backed cache service when available.
+func (c *Context) Redis() *RedisCache {
+	cache, _ := c.cache.(*RedisCache)
+	return cache
+}
+
+// MustRedis returns the configured Redis-backed cache service or panics.
+func (c *Context) MustRedis() *RedisCache {
+	cache := c.Redis()
+	if cache == nil {
+		panic("redis cache is not configured")
+	}
+	return cache
+}
+
+// SFTP returns the configured file transport service.
+func (c *Context) SFTP() FileTransport {
+	return c.sftp
+}
+
+// MustSFTP returns the configured file transport service or panics.
+func (c *Context) MustSFTP() FileTransport {
+	if c.sftp == nil {
+		panic("sftp transport is not configured")
+	}
+	return c.sftp
+}
+
+// Scheduler returns the configured in-process scheduler.
+func (c *Context) Scheduler() *Scheduler {
+	return c.scheduler
+}
+
+// MustScheduler returns the configured scheduler or panics.
+func (c *Context) MustScheduler() *Scheduler {
+	if c.scheduler == nil {
+		panic("scheduler is not configured")
+	}
+	return c.scheduler
+}
+
 // View renders a configured HTML view with HTTP 200.
 func (c *Context) View(name string, data any) error {
 	return c.ViewStatus(http.StatusOK, name, data)

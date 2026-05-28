@@ -74,3 +74,29 @@ func WithQueue(queue Queue) Option {
 		app.Router.config.queue = queue
 	}
 }
+
+// WithCache sets the default cache service available through Context.Cache().
+func WithCache(cache Cache) Option {
+	return func(app *App) {
+		app.Router.config.cache = cache
+	}
+}
+
+// WithRedis is an alias for WithCache for Redis-backed applications.
+func WithRedis(cache Cache) Option {
+	return WithCache(cache)
+}
+
+// WithSFTP sets the default SFTP transport available through Context.SFTP().
+func WithSFTP(transport FileTransport) Option {
+	return func(app *App) {
+		app.Router.config.sftp = transport
+	}
+}
+
+// WithScheduler sets the default scheduler available through Context.Scheduler().
+func WithScheduler(scheduler *Scheduler) Option {
+	return func(app *App) {
+		app.Router.config.scheduler = scheduler
+	}
+}

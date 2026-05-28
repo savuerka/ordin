@@ -9,19 +9,32 @@ import (
 )
 
 type Context struct {
-	Writer   http.ResponseWriter
-	Request  *http.Request
-	params   map[string]string
-	renderer Renderer
-	storage  Storage
-	queue    Queue
+	Writer    http.ResponseWriter
+	Request   *http.Request
+	params    map[string]string
+	renderer  Renderer
+	storage   Storage
+	queue     Queue
+	cache     Cache
+	sftp      FileTransport
+	scheduler *Scheduler
 }
 
-func newContext(w http.ResponseWriter, r *http.Request, params map[string]string, renderer Renderer, storage Storage, queue Queue) *Context {
+func newContext(w http.ResponseWriter, r *http.Request, params map[string]string, config *routerConfig) *Context {
 	if params == nil {
 		params = map[string]string{}
 	}
-	return &Context{Writer: w, Request: r, params: params, renderer: renderer, storage: storage, queue: queue}
+	return &Context{
+		Writer:    w,
+		Request:   r,
+		params:    params,
+		renderer:  config.renderer,
+		storage:   config.storage,
+		queue:     config.queue,
+		cache:     config.cache,
+		sftp:      config.sftp,
+		scheduler: config.scheduler,
+	}
 }
 
 func (c *Context) Param(name string) string {

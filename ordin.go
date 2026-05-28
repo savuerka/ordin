@@ -2,6 +2,7 @@ package ordin
 
 import (
 	"html/template"
+	"os"
 	"time"
 
 	"github.com/savuerka/ordin/framework"
@@ -34,6 +35,30 @@ type PublishOptions = framework.PublishOptions
 type PublishOption = framework.PublishOption
 type ConsumeOptions = framework.ConsumeOptions
 type ConsumeOption = framework.ConsumeOption
+type Cache = framework.Cache
+type RedisCache = framework.RedisCache
+type RedisConfig = framework.RedisConfig
+type FileTransport = framework.FileTransport
+type SFTPClient = framework.SFTPClient
+type SFTPConfig = framework.SFTPConfig
+type SFTPUploadOptions = framework.SFTPUploadOptions
+type SFTPUploadOption = framework.SFTPUploadOption
+type SFTPUploadResult = framework.SFTPUploadResult
+type Scheduler = framework.Scheduler
+type ScheduledJob = framework.ScheduledJob
+type ScheduledFunc = framework.ScheduledFunc
+type Trigger = framework.Trigger
+type ScheduleOptions = framework.ScheduleOptions
+type ScheduleOption = framework.ScheduleOption
+type Pipeline = framework.Pipeline
+type PipelineStep = framework.PipelineStep
+type PipelineFunc = framework.PipelineFunc
+type PipelineContext = framework.PipelineContext
+type PipelineEvent = framework.PipelineEvent
+type PipelineStepOptions = framework.PipelineStepOptions
+type PipelineStepOption = framework.PipelineStepOption
+
+var ErrCacheMiss = framework.ErrCacheMiss
 
 func New(options ...Option) *App {
 	return framework.New(options...)
@@ -61,6 +86,22 @@ func WithStorage(storage Storage) Option {
 
 func WithQueue(queue Queue) Option {
 	return framework.WithQueue(queue)
+}
+
+func WithCache(cache Cache) Option {
+	return framework.WithCache(cache)
+}
+
+func WithRedis(cache Cache) Option {
+	return framework.WithRedis(cache)
+}
+
+func WithSFTP(transport FileTransport) Option {
+	return framework.WithSFTP(transport)
+}
+
+func WithScheduler(scheduler *Scheduler) Option {
+	return framework.WithScheduler(scheduler)
 }
 
 func NewViewEngine(dir string, funcs ...template.FuncMap) (*ViewEngine, error) {
@@ -141,6 +182,78 @@ func WithAutoAck() ConsumeOption {
 
 func WithRequeueOnError() ConsumeOption {
 	return framework.WithRequeueOnError()
+}
+
+func RedisConfigFromEnv(prefix string) RedisConfig {
+	return framework.RedisConfigFromEnv(prefix)
+}
+
+func NewRedisCache(config RedisConfig) (*RedisCache, error) {
+	return framework.NewRedisCache(config)
+}
+
+func MustRedisCache(config RedisConfig) *RedisCache {
+	return framework.MustRedisCache(config)
+}
+
+func SFTPConfigFromEnv(prefix string) SFTPConfig {
+	return framework.SFTPConfigFromEnv(prefix)
+}
+
+func NewSFTPClient(config SFTPConfig) (*SFTPClient, error) {
+	return framework.NewSFTPClient(config)
+}
+
+func MustSFTPClient(config SFTPConfig) *SFTPClient {
+	return framework.MustSFTPClient(config)
+}
+
+func WithSFTPMkdirAll() SFTPUploadOption {
+	return framework.WithSFTPMkdirAll()
+}
+
+func WithoutSFTPChecksum() SFTPUploadOption {
+	return framework.WithoutSFTPChecksum()
+}
+
+func WithSFTPMode(mode os.FileMode) SFTPUploadOption {
+	return framework.WithSFTPMode(mode)
+}
+
+func NewScheduler() *Scheduler {
+	return framework.NewScheduler()
+}
+
+func RunImmediately() ScheduleOption {
+	return framework.RunImmediately()
+}
+
+func Singleton() ScheduleOption {
+	return framework.Singleton()
+}
+
+func WithScheduleTimeout(timeout time.Duration) ScheduleOption {
+	return framework.WithScheduleTimeout(timeout)
+}
+
+func WithScheduleErrorHandler(handler func(string, error)) ScheduleOption {
+	return framework.WithScheduleErrorHandler(handler)
+}
+
+func NewPipeline(name string) *Pipeline {
+	return framework.NewPipeline(name)
+}
+
+func WithStepTimeout(timeout time.Duration) PipelineStepOption {
+	return framework.WithStepTimeout(timeout)
+}
+
+func WithStepRetries(retries int, delay time.Duration) PipelineStepOption {
+	return framework.WithStepRetries(retries, delay)
+}
+
+func ContinueOnStepError() PipelineStepOption {
+	return framework.ContinueOnStepError()
 }
 
 func Dev() Option {

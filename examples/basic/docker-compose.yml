@@ -30,7 +30,24 @@ services:
     volumes:
       - rabbitmqdata:/var/lib/rabbitmq
 
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+  sftp:
+    image: atmoz/sftp:alpine
+    command: ordin:ordin:::upload
+    ports:
+      - "2222:22"
+    volumes:
+      - sftpdata:/home/ordin/upload
+
 volumes:
   pgdata:
   miniodata:
   rabbitmqdata:
+  redisdata:
+  sftpdata:

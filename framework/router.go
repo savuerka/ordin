@@ -14,9 +14,12 @@ type route struct {
 }
 
 type routerConfig struct {
-	renderer Renderer
-	storage  Storage
-	queue    Queue
+	renderer  Renderer
+	storage   Storage
+	queue     Queue
+	cache     Cache
+	sftp      FileTransport
+	scheduler *Scheduler
 }
 
 type Router struct {
@@ -103,7 +106,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			continue
 		}
 
-		ctx := newContext(w, req, params, r.config.renderer, r.config.storage, r.config.queue)
+		ctx := newContext(w, req, params, r.config)
 		if err := chain(rt.handler, rt.middlewares...)(ctx); err != nil {
 			_ = ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
