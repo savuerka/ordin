@@ -15,7 +15,7 @@ import (
 func main() {
 	db := ordin.MustPostgresEnv(
 		"DATABASE_URL",
-		"postgres://postgres:postgres@localhost:5432/larago?sslmode=disable",
+		"postgres://postgres:postgres@localhost:5433/larago?sslmode=disable",
 	)
 	defer db.Close()
 
