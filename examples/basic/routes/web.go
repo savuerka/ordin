@@ -3,15 +3,16 @@ package routes
 import (
 	"basic-example/app/controllers"
 
-	"github.com/savuerka/ordin/framework"
+	"github.com/savuerka/ordin"
 )
 
-func Register(app *framework.App, users controllers.UserController) {
-	app.Get("/", func(c *framework.Context) error { return c.Text(200, "Mini Larago is running") })
+func Register(app *ordin.App, users controllers.UserController) {
+	app.Get("/", ordin.Text("ORDIN is running"))
 
-	app.Group("/api", func(r *framework.Router) {
-		r.Get("/users", users.Index)
-		r.Get("/users/{id}", users.Show)
-		r.Post("/users", users.Store)
+	api := app.Route("/api")
+	api.Resource("/users", ordin.Resource{
+		Index: users.Index,
+		Show:  users.Show,
+		Store: users.Store,
 	})
 }

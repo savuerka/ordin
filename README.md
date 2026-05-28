@@ -8,22 +8,29 @@
 
 - `GET`, `POST`, `PUT`, `PATCH`, `DELETE`
 - параметры маршрутов: `/users/{id}`
-- группы маршрутов: `/api`, `/admin` и т.д.
+- группы маршрутов: callback-style `Group` и fluent-style `Route`
 - global и route-level middleware
-- `Context`: `Param`, `Query`, `BindJSON`, `JSON`, `Text`
+- `Context`: `Param`, `ParamInt`, `Query`, `BindJSON`, `Ctx`, `JSON`, `Text`
+- короткие ответы: `OK`, `Created`, `BadRequest`, `Unauthorized`, `Forbidden`, `NotFound`, `NoContent`
 - PostgreSQL через `pgx` stdlib
 - query builder: `Table`, `Where`, `OrderBy`, `Limit`, `Get`, `First`, `Insert`, `Update`, `Delete`
+- generic typed query: `ordin.Query[T](db, "table").All(ctx)`
+- CRUD routes через `Resource`
 - простые SQL-миграции из папки
 
-
-
-## Подключение к своему приложению
+## Подключение
 
 ```bash
 go get github.com/savuerka/ordin
 ```
 
-И импорт:
+Новый короткий импорт:
+
+```go
+import "github.com/savuerka/ordin"
+```
+
+Старый импорт продолжает работать:
 
 ```go
 import "github.com/savuerka/ordin/framework"
@@ -34,54 +41,90 @@ import "github.com/savuerka/ordin/framework"
 ```go
 package main
 
-import "github.com/savuerka/ordin/framework"
+import "github.com/savuerka/ordin"
 
 func main() {
-    app := framework.New()
-    app.Use(framework.Recover(), framework.Logger())
+    app := ordin.New(ordin.Dev())
 
-    app.Get("/", func(c *framework.Context) error {
-        return c.Text(200, "Hello")
+    app.Get("/", ordin.Text("Hello"))
+
+    app.Get("/users/{id}", func(c *ordin.Context) error {
+        return c.OK(map[string]string{"id": c.Param("id")})
     })
 
-    app.Get("/users/{id}", func(c *framework.Context) error {
-        return c.JSON(200, map[string]string{"id": c.Param("id")})
-    })
-
-    _ = app.Listen(":8080")
+    _ = app.Run()
 }
+```
+
+`Run()` без аргументов слушает `:8080`. Можно передать адрес явно:
+
+```go
+_ = app.Run(":3000")
 ```
 
 ## Middleware
 
 ```go
-func Auth() framework.Middleware {
-    return func(next framework.HandlerFunc) framework.HandlerFunc {
-        return func(c *framework.Context) error {
+func Auth() ordin.Middleware {
+    return func(next ordin.HandlerFunc) ordin.HandlerFunc {
+        return func(c *ordin.Context) error {
             if c.Header("Authorization") == "" {
-                return c.JSON(401, map[string]string{"error": "unauthorized"})
+                return c.Unauthorized("unauthorized")
             }
             return next(c)
         }
     }
 }
 
-app.Group("/admin", func(r *framework.Router) {
+admin := app.Route("/admin", Auth())
+admin.Get("/dashboard", Dashboard)
+```
+
+Callback-style группы тоже поддерживаются:
+
+```go
+app.Group("/admin", func(r *ordin.Router) {
     r.Get("/dashboard", Dashboard)
 }, Auth())
+```
+
+## Resource routes
+
+```go
+api := app.Route("/api")
+api.Resource("/users", ordin.Resource{
+    Index: users.Index,
+    Show:  users.Show,
+    Store: users.Store,
+})
+```
+
+Это зарегистрирует:
+
+```text
+GET  /api/users
+GET  /api/users/{id}
+POST /api/users
+```
+
+Если указать `Update` и `Delete`, будут добавлены:
+
+```text
+PUT    /api/users/{id}
+DELETE /api/users/{id}
 ```
 
 ## PostgreSQL ORM/query builder
 
 ```go
-db, err := framework.ConnectPostgres("postgres://postgres:postgres@localhost:5432/app?sslmode=disable")
+db, err := ordin.ConnectPostgres("postgres://postgres:postgres@localhost:5432/app?sslmode=disable")
 if err != nil {
     panic(err)
 }
 defer db.Close()
 
 type User struct {
-    ID    int    `db:"id" json:"id"`
+    ID    int    `db:"id,omitempty" json:"id"`
     Name  string `db:"name" json:"name"`
     Email string `db:"email" json:"email"`
 }
@@ -93,10 +136,43 @@ var user User
 err = db.Table("users").Where("id = ?", 1).First(ctx, &user)
 
 err = db.Table("users").Insert(ctx, User{Name: "Alex", Email: "alex@test.com"})
-
 err = db.Table("users").Where("id = ?", 1).Update(ctx, map[string]any{"name": "Alex Updated"})
-
 err = db.Table("users").Where("id = ?", 1).Delete(ctx)
+```
+
+## Typed query
+
+```go
+users, err := ordin.Query[User](db, "users").
+    Where("email LIKE ?", "%@test.com").
+    OrderBy("id DESC").
+    All(ctx)
+
+user, err := ordin.Query[User](db, "users").
+    Where("id = ?", 1).
+    First(ctx)
+```
+
+## Context helpers
+
+```go
+func Show(c *ordin.Context) error {
+    id, err := c.ParamInt("id")
+    if err != nil {
+        return c.BadRequest("invalid id")
+    }
+
+    return c.OK(map[string]any{"id": id})
+}
+```
+
+Generic bind:
+
+```go
+user, err := ordin.Bind[User](c)
+if err != nil {
+    return c.BadRequest(err.Error())
+}
 ```
 
 ## Миграции
@@ -112,7 +188,13 @@ migrations/
 Запуск:
 
 ```go
-err := framework.NewMigrator(db).Run(context.Background(), "migrations")
+err := ordin.NewMigrator(db).Run(context.Background(), "migrations")
+```
+
+Или коротко:
+
+```go
+ordin.MustMigrate(db, "migrations")
 ```
 
 ## Запуск примера

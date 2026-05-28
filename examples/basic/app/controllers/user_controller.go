@@ -1,40 +1,51 @@
 package controllers
 
 import (
-	"net/http"
-	"strconv"
-
 	"basic-example/app/models"
 
-	"github.com/savuerka/ordin/framework"
+	"github.com/savuerka/ordin"
 )
 
-type UserController struct{ DB *framework.DB }
-
-func (uc UserController) Index(c *framework.Context) error {
-	var users []models.User
-	if err := uc.DB.Table("users").OrderBy("id DESC").Get(c.Request.Context(), &users); err != nil {
-		return err
-	}
-	return c.JSON(http.StatusOK, users)
+type UserController struct {
+	DB *ordin.DB
 }
 
-func (uc UserController) Show(c *framework.Context) error {
-	id, _ := strconv.Atoi(c.Param("id"))
-	var user models.User
-	if err := uc.DB.Table("users").Where("id = ?", id).First(c.Request.Context(), &user); err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
-	}
-	return c.JSON(http.StatusOK, user)
-}
-
-func (uc UserController) Store(c *framework.Context) error {
-	var user models.User
-	if err := c.BindJSON(&user); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-	}
-	if err := uc.DB.Table("users").Insert(c.Request.Context(), user); err != nil {
+func (uc UserController) Index(c *ordin.Context) error {
+	users, err := ordin.Query[models.User](uc.DB, "users").
+		OrderBy("id DESC").
+		All(c.Ctx())
+	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusCreated, user)
+
+	return c.OK(users)
+}
+
+func (uc UserController) Show(c *ordin.Context) error {
+	id, err := c.ParamInt("id")
+	if err != nil {
+		return c.BadRequest("invalid id")
+	}
+
+	user, err := ordin.Query[models.User](uc.DB, "users").
+		Where("id = ?", id).
+		First(c.Ctx())
+	if err != nil {
+		return c.NotFound("user not found")
+	}
+
+	return c.OK(user)
+}
+
+func (uc UserController) Store(c *ordin.Context) error {
+	user, err := ordin.Bind[models.User](c)
+	if err != nil {
+		return c.BadRequest(err.Error())
+	}
+
+	if err := ordin.Query[models.User](uc.DB, "users").Create(c.Ctx(), user); err != nil {
+		return err
+	}
+
+	return c.Created(user)
 }

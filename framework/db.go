@@ -28,12 +28,22 @@ func ConnectPostgres(dsn string) (*DB, error) {
 	return &DB{sql: db, dsn: dsn}, nil
 }
 
-func (db *DB) Close() error { return db.sql.Close() }
-func (db *DB) SQL() *sql.DB { return db.sql }
-func (db *DB) DSN() string  { return db.dsn }
+func (db *DB) Close() error {
+	return db.sql.Close()
+}
+
+func (db *DB) SQL() *sql.DB {
+	return db.sql
+}
+
+func (db *DB) DSN() string {
+	return db.dsn
+}
+
 func (db *DB) Table(name string) *QueryBuilder {
 	return &QueryBuilder{db: db.sql, table: name, limit: -1}
 }
+
 func (db *DB) Exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return db.sql.ExecContext(ctx, query, args...)
 }
@@ -49,18 +59,31 @@ type QueryBuilder struct {
 	offset  int
 }
 
-func (q *QueryBuilder) Select(cols ...string) *QueryBuilder { q.selects = cols; return q }
+func (q *QueryBuilder) Select(cols ...string) *QueryBuilder {
+	q.selects = cols
+	return q
+}
+
 func (q *QueryBuilder) Where(cond string, args ...any) *QueryBuilder {
 	q.wheres = append(q.wheres, cond)
 	q.args = append(q.args, args...)
 	return q
 }
+
 func (q *QueryBuilder) OrderBy(expr string) *QueryBuilder {
 	q.orders = append(q.orders, expr)
 	return q
 }
-func (q *QueryBuilder) Limit(n int) *QueryBuilder  { q.limit = n; return q }
-func (q *QueryBuilder) Offset(n int) *QueryBuilder { q.offset = n; return q }
+
+func (q *QueryBuilder) Limit(n int) *QueryBuilder {
+	q.limit = n
+	return q
+}
+
+func (q *QueryBuilder) Offset(n int) *QueryBuilder {
+	q.offset = n
+	return q
+}
 
 func (q *QueryBuilder) Get(ctx context.Context, dst any) error {
 	query, args := q.buildSelect()
@@ -97,6 +120,7 @@ func (q *QueryBuilder) Update(ctx context.Context, values map[string]any) error 
 		sets = append(sets, fmt.Sprintf("%s = ?", col))
 		args = append(args, val)
 	}
+
 	query := fmt.Sprintf("UPDATE %s SET %s", q.table, strings.Join(sets, ", "))
 	if len(q.wheres) > 0 {
 		query += " WHERE " + strings.Join(q.wheres, " AND ")
@@ -121,6 +145,7 @@ func (q *QueryBuilder) buildSelect() (string, []any) {
 	if len(q.selects) > 0 {
 		cols = strings.Join(q.selects, ", ")
 	}
+
 	query := fmt.Sprintf("SELECT %s FROM %s", cols, q.table)
 	if len(q.wheres) > 0 {
 		query += " WHERE " + strings.Join(q.wheres, " AND ")
@@ -142,19 +167,40 @@ func columnsAndValues(model any) ([]string, []any) {
 	t := v.Type()
 	cols := []string{}
 	vals := []any{}
+
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		col := f.Tag.Get("db")
+		col, options := parseDBTag(f.Tag.Get("db"))
 		if col == "" || col == "-" {
 			continue
 		}
+		fieldValue := v.Field(i)
+		if options["omitempty"] && fieldValue.IsZero() {
+			continue
+		}
 		cols = append(cols, col)
-		vals = append(vals, v.Field(i).Interface())
+		vals = append(vals, fieldValue.Interface())
 	}
+
 	return cols, vals
 }
 
-type rowScanner interface{ Scan(dest ...any) error }
+func parseDBTag(tag string) (string, map[string]bool) {
+	parts := strings.Split(tag, ",")
+	name := strings.TrimSpace(parts[0])
+	options := make(map[string]bool, len(parts)-1)
+	for _, option := range parts[1:] {
+		option = strings.TrimSpace(option)
+		if option != "" {
+			options[option] = true
+		}
+	}
+	return name, options
+}
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
 
 func scanRow(row rowScanner, dst any) error {
 	v := reflect.Indirect(reflect.ValueOf(dst))
@@ -173,6 +219,7 @@ func scanAll(rows *sql.Rows, dst any) error {
 	if err != nil {
 		return err
 	}
+
 	for rows.Next() {
 		elem := reflect.New(elemType).Elem()
 		fields := dbFieldsByColumns(elem, cols)
@@ -203,7 +250,7 @@ func dbFieldsInStructOrder(v reflect.Value) []int {
 		if !v.Field(i).CanSet() {
 			continue
 		}
-		if tag := v.Type().Field(i).Tag.Get("db"); tag == "-" {
+		if tag, _ := parseDBTag(v.Type().Field(i).Tag.Get("db")); tag == "-" {
 			continue
 		}
 		fields = append(fields, i)
@@ -224,7 +271,7 @@ func dbFieldsByColumns(v reflect.Value, cols []string) []int {
 			if !field.CanSet() {
 				continue
 			}
-			tag := structField.Tag.Get("db")
+			tag, _ := parseDBTag(structField.Tag.Get("db"))
 			if tag == "-" {
 				continue
 			}
@@ -257,18 +304,15 @@ func assignScannedValue(field reflect.Value, value any) error {
 	if !field.CanSet() {
 		return nil
 	}
-
 	if field.CanAddr() {
 		if scanner, ok := field.Addr().Interface().(sql.Scanner); ok {
 			return scanner.Scan(value)
 		}
 	}
-
 	if value == nil {
 		field.Set(reflect.Zero(field.Type()))
 		return nil
 	}
-
 	if field.Kind() == reflect.Pointer {
 		elem := reflect.New(field.Type().Elem())
 		if scanner, ok := elem.Interface().(sql.Scanner); ok {
@@ -284,11 +328,9 @@ func assignScannedValue(field reflect.Value, value any) error {
 		field.Set(elem)
 		return nil
 	}
-
 	if valueBytes, ok := value.([]byte); ok {
 		value = string(valueBytes)
 	}
-
 	if valueTime, ok := value.(time.Time); ok && field.Type() == reflect.TypeOf(time.Time{}) {
 		field.Set(reflect.ValueOf(valueTime))
 		return nil
@@ -351,7 +393,6 @@ func assignScannedValue(field reflect.Value, value any) error {
 			return nil
 		}
 	}
-
 	return fmt.Errorf("cannot assign database value %T to %s", value, field.Type())
 }
 

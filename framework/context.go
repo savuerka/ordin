@@ -48,7 +48,6 @@ func (c *Context) Status(code int) *Context {
 // Excluded fields are matched by json tag name first, then by Go struct field name.
 func (c *Context) JSON(code int, data any, exclude ...[]string) error {
 	payload := data
-
 	if len(exclude) > 0 && len(exclude[0]) > 0 {
 		payload = excludeJSONFields(data, exclude[0])
 	}
@@ -82,7 +81,6 @@ func excludeJSONFields(data any, fields []string) any {
 		}
 		excluded[field] = struct{}{}
 	}
-
 	return filterValue(reflect.ValueOf(data), excluded)
 }
 
@@ -131,7 +129,6 @@ func filterStruct(value reflect.Value, excluded map[string]struct{}) map[string]
 		if jsonName == "-" {
 			continue
 		}
-
 		if jsonName == "" {
 			jsonName = field.Name
 		}
@@ -171,7 +168,6 @@ func jsonFieldName(field reflect.StructField) string {
 	if tag == "" {
 		return ""
 	}
-
 	parts := strings.Split(tag, ",")
 	return parts[0]
 }

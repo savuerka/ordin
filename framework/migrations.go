@@ -14,9 +14,13 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-type Migrator struct{ db *DB }
+type Migrator struct {
+	db *DB
+}
 
-func NewMigrator(db *DB) *Migrator { return &Migrator{db: db} }
+func NewMigrator(db *DB) *Migrator {
+	return &Migrator{db: db}
+}
 
 func (m *Migrator) Run(ctx context.Context, dir string) error {
 	if _, err := m.db.Exec(ctx, `CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT now())`); err != nil {
@@ -31,17 +35,14 @@ func (m *Migrator) Run(ctx context.Context, dir string) error {
 
 	for _, file := range files {
 		name := filepath.Base(file)
-
 		var exists string
 		err := m.db.SQL().QueryRowContext(ctx, "SELECT name FROM migrations WHERE name = $1", name).Scan(&exists)
 		if err == nil {
 			continue
 		}
-
 		if err := m.runFile(ctx, file); err != nil {
 			return fmt.Errorf("migration %s failed: %w", name, err)
 		}
-
 		if _, err := m.db.Exec(ctx, "INSERT INTO migrations(name) VALUES($1)", name); err != nil {
 			return err
 		}
@@ -96,14 +97,12 @@ func (m *Migrator) runPostgresDump(ctx context.Context, file string) error {
 		line, err := r.ReadString('\n')
 		if len(line) > 0 {
 			trimmed := strings.TrimSpace(line)
-
 			if strings.HasPrefix(trimmed, "--") || trimmed == "" {
 				// Keep comments harmless and avoid executing comment-only statements.
 				continue
 			}
 
 			stmt.WriteString(line)
-
 			if isCopyFromStdin(stmt.String()) {
 				copySQL := strings.TrimSpace(stmt.String())
 				stmt.Reset()
@@ -112,7 +111,6 @@ func (m *Migrator) runPostgresDump(ctx context.Context, file string) error {
 				if readErr != nil {
 					return readErr
 				}
-
 				if _, copyErr := conn.PgConn().CopyFrom(ctx, bytes.NewReader(data), copySQL); copyErr != nil {
 					return copyErr
 				}
@@ -142,7 +140,6 @@ func (m *Migrator) runPostgresDump(ctx context.Context, file string) error {
 		_, err := conn.Exec(ctx, sql)
 		return err
 	}
-
 	return nil
 }
 
