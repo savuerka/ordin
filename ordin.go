@@ -2,6 +2,7 @@ package ordin
 
 import (
 	"html/template"
+	"time"
 
 	"github.com/savuerka/ordin/framework"
 )
@@ -19,6 +20,20 @@ type Resource = framework.Resource
 type Data = framework.Data
 type Renderer = framework.Renderer
 type ViewEngine = framework.ViewEngine
+type Storage = framework.Storage
+type S3Storage = framework.S3Storage
+type S3Config = framework.S3Config
+type PutOptions = framework.PutOptions
+type PutOption = framework.PutOption
+type Queue = framework.Queue
+type RabbitQueue = framework.RabbitQueue
+type RabbitMQConfig = framework.RabbitMQConfig
+type Job = framework.Job
+type JobHandler = framework.JobHandler
+type PublishOptions = framework.PublishOptions
+type PublishOption = framework.PublishOption
+type ConsumeOptions = framework.ConsumeOptions
+type ConsumeOption = framework.ConsumeOption
 
 func New(options ...Option) *App {
 	return framework.New(options...)
@@ -40,12 +55,92 @@ func WithViews(dir string, funcs ...template.FuncMap) Option {
 	return framework.WithViews(dir, funcs...)
 }
 
+func WithStorage(storage Storage) Option {
+	return framework.WithStorage(storage)
+}
+
+func WithQueue(queue Queue) Option {
+	return framework.WithQueue(queue)
+}
+
 func NewViewEngine(dir string, funcs ...template.FuncMap) (*ViewEngine, error) {
 	return framework.NewViewEngine(dir, funcs...)
 }
 
 func MustViewEngine(dir string, funcs ...template.FuncMap) *ViewEngine {
 	return framework.MustViewEngine(dir, funcs...)
+}
+
+func S3ConfigFromEnv(prefix string) S3Config {
+	return framework.S3ConfigFromEnv(prefix)
+}
+
+func NewS3Storage(config S3Config) (*S3Storage, error) {
+	return framework.NewS3Storage(config)
+}
+
+func MustS3Storage(config S3Config) *S3Storage {
+	return framework.MustS3Storage(config)
+}
+
+func WithContentType(contentType string) PutOption {
+	return framework.WithContentType(contentType)
+}
+
+func WithCacheControl(value string) PutOption {
+	return framework.WithCacheControl(value)
+}
+
+func WithObjectMetadata(metadata map[string]string) PutOption {
+	return framework.WithObjectMetadata(metadata)
+}
+
+func RabbitMQConfigFromEnv(prefix string) RabbitMQConfig {
+	return framework.RabbitMQConfigFromEnv(prefix)
+}
+
+func NewRabbitQueue(config RabbitMQConfig) (*RabbitQueue, error) {
+	return framework.NewRabbitQueue(config)
+}
+
+func MustRabbitQueue(config RabbitMQConfig) *RabbitQueue {
+	return framework.MustRabbitQueue(config)
+}
+
+func WithQueueContentType(contentType string) PublishOption {
+	return framework.WithQueueContentType(contentType)
+}
+
+func WithQueueHeaders(headers map[string]any) PublishOption {
+	return framework.WithQueueHeaders(headers)
+}
+
+func WithExchange(exchange, routingKey string) PublishOption {
+	return framework.WithExchange(exchange, routingKey)
+}
+
+func WithTransientMessage() PublishOption {
+	return framework.WithTransientMessage()
+}
+
+func WithQueueDelay(delay time.Duration) PublishOption {
+	return framework.WithQueueDelay(delay)
+}
+
+func WithConsumerName(name string) ConsumeOption {
+	return framework.WithConsumerName(name)
+}
+
+func WithPrefetch(count int) ConsumeOption {
+	return framework.WithPrefetch(count)
+}
+
+func WithAutoAck() ConsumeOption {
+	return framework.WithAutoAck()
+}
+
+func WithRequeueOnError() ConsumeOption {
+	return framework.WithRequeueOnError()
 }
 
 func Dev() Option {

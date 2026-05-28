@@ -60,3 +60,17 @@ func WithViews(dir string, funcs ...template.FuncMap) Option {
 		app.Router.config.renderer = MustViewEngine(dir, funcs...)
 	}
 }
+
+// WithStorage sets the default storage service available through Context.Storage().
+func WithStorage(storage Storage) Option {
+	return func(app *App) {
+		app.Router.config.storage = storage
+	}
+}
+
+// WithQueue sets the default queue service available through Context.Queue().
+func WithQueue(queue Queue) Option {
+	return func(app *App) {
+		app.Router.config.queue = queue
+	}
+}

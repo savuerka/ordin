@@ -19,6 +19,8 @@
 - простые SQL-миграции из папки
 - HTML views через `c.View(...)`
 - Blade-like шаблоны `.ordin.html`: `@extends`, `@section`, `@yield`, `@include`, `@if`, `@foreach`, `{{ value }}`
+- S3-compatible storage: MinIO, SeaweedFS S3, AWS S3 и похожие backend-ы
+- RabbitMQ queue backend через AMQP 0.9.1
 
 ## Подключение
 
@@ -193,6 +195,147 @@ Layout `resources/views/layouts/app.ordin.html`:
 ```
 
 Внутри это компилируется в `html/template`, поэтому обычный `{{ value }}` экранируется безопасно по умолчанию.
+
+## Storage: MinIO / SeaweedFS / S3
+
+ORDIN содержит небольшую абстракцию `Storage` и S3-compatible реализацию. Она подходит для MinIO, SeaweedFS S3 API, AWS S3, Garage и других совместимых backend-ов.
+
+```go
+storage := ordin.MustS3Storage(ordin.S3Config{
+    Endpoint:        "localhost:9000",
+    AccessKeyID:     "minioadmin",
+    SecretAccessKey: "minioadmin",
+    Bucket:          "ordin",
+    Region:          "us-east-1",
+    Secure:          false,
+    CreateBucket:    true,
+})
+
+app := ordin.New(
+    ordin.Dev(),
+    ordin.WithStorage(storage),
+)
+```
+
+В handler-е:
+
+```go
+app.Post("/upload", func(c *ordin.Context) error {
+    file, header, err := c.Request.FormFile("file")
+    if err != nil {
+        return c.BadRequest(err.Error())
+    }
+    defer file.Close()
+
+    key := "uploads/" + header.Filename
+    if err := c.MustStorage().Put(c.Ctx(), key, file, header.Size, ordin.WithContentType(header.Header.Get("Content-Type"))); err != nil {
+        return err
+    }
+
+    url, err := c.MustStorage().URL(c.Ctx(), key, 15*time.Minute)
+    if err != nil {
+        return err
+    }
+
+    return c.Created(ordin.Data{
+        "key": key,
+        "url": url,
+    })
+})
+```
+
+Можно читать конфигурацию из окружения:
+
+```go
+storage := ordin.MustS3Storage(ordin.S3ConfigFromEnv("S3"))
+```
+
+Для префикса `S3` используются переменные:
+
+```text
+S3_ENDPOINT=localhost:9000
+S3_ACCESS_KEY_ID=minioadmin
+S3_SECRET_ACCESS_KEY=minioadmin
+S3_BUCKET=ordin
+S3_REGION=us-east-1
+S3_SECURE=false
+S3_CREATE_BUCKET=true
+```
+
+Для SeaweedFS обычно достаточно поменять endpoint, например:
+
+```text
+S3_ENDPOINT=localhost:8333
+```
+
+В `examples/basic` storage включается явно через `S3_ENABLED=true`. Без этого demo-route `/demo/upload` вернёт `503`, чтобы приложение не падало, если MinIO/SeaweedFS не запущен.
+
+## Queues: RabbitMQ
+
+ORDIN содержит небольшую абстракцию `Queue` и RabbitMQ backend.
+
+```go
+queue := ordin.MustRabbitQueue(ordin.RabbitMQConfig{
+    URL: "amqp://guest:guest@localhost:5672/",
+})
+defer queue.Close()
+
+app := ordin.New(
+    ordin.Dev(),
+    ordin.WithQueue(queue),
+)
+```
+
+Публикация job/message из handler-а:
+
+```go
+app.Post("/emails/welcome", func(c *ordin.Context) error {
+    err := c.MustQueue().PublishJSON(c.Ctx(), "emails", ordin.Data{
+        "type":  "welcome",
+        "email": "user@example.com",
+    })
+    if err != nil {
+        return err
+    }
+
+    return c.Created(ordin.Data{"queued": true})
+})
+```
+
+Worker:
+
+```go
+func main() {
+    queue := ordin.MustRabbitQueue(ordin.RabbitMQConfigFromEnv("RABBITMQ"))
+    defer queue.Close()
+
+    err := queue.Consume(context.Background(), "emails", func(ctx context.Context, job ordin.Job) error {
+        var payload struct {
+            Type  string `json:"type"`
+            Email string `json:"email"`
+        }
+
+        if err := job.DecodeJSON(&payload); err != nil {
+            return err
+        }
+
+        // send email, generate report, resize image, etc.
+        return nil
+    }, ordin.WithPrefetch(5))
+
+    if err != nil {
+        panic(err)
+    }
+}
+```
+
+Переменная окружения по умолчанию:
+
+```text
+RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+```
+
+В `examples/basic` очередь включается явно через `RABBITMQ_ENABLED=true`. Без этого demo-route `/demo/jobs/welcome` вернёт `503`, чтобы базовый пример запускался без RabbitMQ.
 
 ## PostgreSQL ORM/query builder
 

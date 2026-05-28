@@ -49,6 +49,32 @@ func (c *Context) NotFound(message string) error {
 	return c.Error(http.StatusNotFound, message)
 }
 
+// Storage returns the configured object storage service.
+func (c *Context) Storage() Storage {
+	return c.storage
+}
+
+// MustStorage returns the configured object storage service or panics.
+func (c *Context) MustStorage() Storage {
+	if c.storage == nil {
+		panic(storageNotConfiguredError())
+	}
+	return c.storage
+}
+
+// Queue returns the configured queue service.
+func (c *Context) Queue() Queue {
+	return c.queue
+}
+
+// MustQueue returns the configured queue service or panics.
+func (c *Context) MustQueue() Queue {
+	if c.queue == nil {
+		panic("queue is not configured")
+	}
+	return c.queue
+}
+
 // View renders a configured HTML view with HTTP 200.
 func (c *Context) View(name string, data any) error {
 	return c.ViewStatus(http.StatusOK, name, data)

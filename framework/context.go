@@ -13,13 +13,15 @@ type Context struct {
 	Request  *http.Request
 	params   map[string]string
 	renderer Renderer
+	storage  Storage
+	queue    Queue
 }
 
-func newContext(w http.ResponseWriter, r *http.Request, params map[string]string, renderer Renderer) *Context {
+func newContext(w http.ResponseWriter, r *http.Request, params map[string]string, renderer Renderer, storage Storage, queue Queue) *Context {
 	if params == nil {
 		params = map[string]string{}
 	}
-	return &Context{Writer: w, Request: r, params: params, renderer: renderer}
+	return &Context{Writer: w, Request: r, params: params, renderer: renderer, storage: storage, queue: queue}
 }
 
 func (c *Context) Param(name string) string {

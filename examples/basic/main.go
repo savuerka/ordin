@@ -19,11 +19,24 @@ func main() {
 
 	ordin.MustMigrate(db, "migrations")
 
-	app := ordin.New(
+	options := []ordin.Option{
 		ordin.Dev(),
 		ordin.WithViews("resources/views"),
-	)
-	routes.Register(app, controllers.UserController{DB: db})
+	}
+
+	if getenv("S3_ENABLED", "false") == "true" {
+		storage := ordin.MustS3Storage(ordin.S3ConfigFromEnv("S3"))
+		options = append(options, ordin.WithStorage(storage))
+	}
+
+	if getenv("RABBITMQ_ENABLED", "false") == "true" {
+		queue := ordin.MustRabbitQueue(ordin.RabbitMQConfigFromEnv("RABBITMQ"))
+		defer queue.Close()
+		options = append(options, ordin.WithQueue(queue))
+	}
+
+	app := ordin.New(options...)
+	routes.Register(app, controllers.UserController{DB: db}, controllers.ServiceController{})
 
 	addr := getenv("APP_ADDR", ":8080")
 	log.Printf("listening on %s", addr)
